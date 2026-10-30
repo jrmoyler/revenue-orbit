@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { createServer } from "./dev.js";
 
 process.env.ORBIT_API_KEY = "test-key";
+process.env.ORBIT_TEAM_KEYS = "mate-key, mate-two";
+process.env.ORBIT_BILLS = JSON.stringify({ floor: 1234, personal: 5678 }); // fixture, not real figures
 const server = createServer().listen(0);
 const base = `http://localhost:${server.address().port}`;
 const auth = { Authorization: "Bearer test-key", "Content-Type": "application/json" };
@@ -61,9 +63,41 @@ try {
   j = await r.json();
   assert.equal(j.summary.collected, 750);
 
+  // Bills are owner-only: present for the key holder, absent from every public file
+  assert.equal(m.summary.bills_floor, 1234);
+  assert.deepEqual(month.result.structuredContent.bills, { floor: 1234, personal: 5678 });
+  assert.equal((await fetch(base + "/api/state", { headers: { Authorization: "Bearer wrong" } })).status, 401);
+  assert.ok(init.result.instructions.includes("1,234"));
+
   // Static files
-  assert.equal((await fetch(base + "/")).status, 200);
+  const html = await (await fetch(base + "/")).text();
+  const planSrc = await (await fetch(base + "/lib/plan.js")).text();
   assert.equal((await fetch(base + "/lib/plan.js")).status, 200);
+  assert.ok(!/FLOOR|PERSONAL/.test(planSrc), "plan.js is public and must not hold bills");
+  assert.ok(!/Bills floor \$|Personal \+ bills<\/div><div class="num"[^>]*>\$/.test(html), "index.html must not hardcode bills");
+
+  // Teammate keys work for shared data but never see bills (REST or MCP)
+  const mate = { Authorization: "Bearer mate-two", "Content-Type": "application/json" };
+  j = await (await fetch(base + "/api/state?month=2026-11", { headers: mate })).json();
+  assert.equal(j.summary.collected, 750);
+  assert.equal(j.bills, null);
+  assert.equal(j.summary.bills_floor, undefined);
+  r = await fetch(base + "/api/state", { method: "POST", headers: mate, body: JSON.stringify({ action: "log_sale", offer: "land", amount: 900, date: "2026-11-06", actor: "Mate" }) });
+  j = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(j.bills, null);
+  assert.equal(j.summary.bills_floor, undefined);
+  const mrpc = async (method, params) => (await fetch(base + "/mcp", { method: "POST", headers: mate, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) })).json();
+  assert.ok(!(await mrpc("initialize", { protocolVersion: "2025-06-18" })).result.instructions.includes("1,234"));
+  const mm = (await mrpc("tools/call", { name: "get_month", arguments: { month: "2026-11" } })).result.structuredContent;
+  assert.equal(mm.bills, undefined);
+  assert.equal(mm.summary.bills_floor, undefined);
+
+  // Without ORBIT_BILLS nobody gets bills from the server
+  delete process.env.ORBIT_BILLS;
+  j = await (await fetch(base + "/api/state?month=2026-11", { headers: auth })).json();
+  assert.equal(j.bills, null);
+  assert.equal(j.summary.bills_floor, undefined);
 
   console.log("All smoke checks passed.");
 } finally {
