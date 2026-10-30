@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090b12">
+<title>Revenue Orbit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: an orbital instrument up top (core = month target, planets = offers), operating panels below in a two-column grid that stacks on phones. Single dark world by design. */
+:root{
+  color-scheme: dark;
+  --void:#090b12;
+  --panel:#11141f;
+  --panel-2:#171b29;
+  --line:#262b3d;
+  --ink:#e9e6df;
+  --muted:#8d91a6;
+  --amber:#f0a53a;
+  --amber-dim:#7a5421;
+  --teal:#52cdb8;
+  --rose:#e4677a;
+  --display:"Unbounded", "Arial Black", system-ui, sans-serif;
+  --body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+html,body{background:var(--void);color:var(--ink)}
+body{font-family:var(--body);font-size:15px;line-height:1.5;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:12px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:-0.01em}
+.label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* Top bar */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.top h1{font-size:clamp(22px,4vw,34px)}
+.top h1 span{color:var(--amber)}
+.monthnav{display:flex;align-items:center;gap:6px}
+.monthnav button{background:var(--panel);border:1px solid var(--line);border-radius:8px;width:36px;height:36px;cursor:pointer}
+.monthnav button:hover{border-color:var(--amber-dim)}
+.monthnav .m{font-family:var(--mono);min-width:120px;text-align:center;font-size:14px}
+.sync{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* Stage */
+.stage{position:relative;height:min(62vh,560px);min-height:380px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:radial-gradient(120% 90% at 50% 45%, #141828 0%, var(--void) 70%)}
+#scene{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.labels{position:absolute;inset:0;pointer-events:none}
+.plabel{position:absolute;transform:translate(-50%,-140%);font-family:var(--mono);font-size:11px;white-space:nowrap;color:var(--ink);background:rgba(9,11,18,.72);border:1px solid var(--line);padding:2px 6px;border-radius:5px}
+.plabel b{color:var(--amber);font-weight:600}
+.plabel.sel{border-color:var(--amber)}
+.hud{position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:2px;pointer-events:none}
+.hud .big{font-family:var(--display);font-size:clamp(28px,6vw,46px);line-height:1.05}
+.hud .of{font-family:var(--mono);color:var(--muted);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:99px;border:1px solid currentColor;width:max-content;margin-top:6px}
+.pill.on{color:var(--teal)} .pill.behind{color:var(--rose)} .pill.wait{color:var(--amber)}
+.hint{position:absolute;right:14px;bottom:12px;font-family:var(--mono);font-size:11px;color:var(--muted);pointer-events:none}
+
+/* KPI strip */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.kpi .v{font-family:var(--mono);font-size:20px;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi .s{font-size:12px;color:var(--muted)}
+.bar{height:6px;border-radius:3px;background:var(--panel-2);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--amber)}
+.bar i.t{background:var(--teal)}
+
+/* Offer chips */
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.chip{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:6px 12px 6px 8px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px}
+.chip .dot{width:10px;height:10px;border-radius:50%}
+.chip[aria-pressed="true"]{border-color:var(--amber);background:var(--panel-2)}
+.chip .p{font-family:var(--mono);color:var(--muted);font-size:11px}
+
+/* Panels */
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;min-width:0}
+.panel h2{font-size:16px;margin-bottom:4px}
+.panel .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+
+.offer-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline}
+.offer-head h2{font-size:20px}
+.offer-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.offer-meta div{background:var(--panel-2);border-radius:8px;padding:10px}
+.offer-meta .v{font-family:var(--mono);font-size:16px}
+dl.facts{display:grid;grid-template-columns:90px minmax(0,1fr);gap:6px 12px;margin:0 0 12px;font-size:14px}
+dl.facts dt{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+dl.facts dd{margin:0}
+.moves{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:4px}
+
+/* Log form */
+form.log{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr);gap:10px}
+form.log .full{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field input,.field select{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-width:0;width:100%;box-sizing:border-box}
+.btn{background:var(--amber);color:#1a1205;border:0;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500;padding:4px 8px;font-size:12px}
+.msg{font-size:12px;color:var(--teal);min-height:18px}
+
+/* Ledger */
+.ledger{width:100%;border-collapse:collapse;font-size:13px}
+.ledger th{font-family:var(--mono);font-weight:400;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+.ledger td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+.ledger td.amt{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.ledger th.amt{text-align:right}
+.tablewrap{overflow-x:auto}
+.empty{color:var(--muted);font-size:13px;padding:10px 0}
+
+/* Playbook */
+.week{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.week:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.week-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.week-h h3{font-size:13px;font-family:var(--body);font-weight:600}
+.week-h .now{color:var(--amber);font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+.task{display:flex;gap:10px;align-items:flex-start;padding:5px 0;font-size:14px;cursor:pointer}
+.task input{margin-top:3px;accent-color:var(--teal);width:16px;height:16px;flex:0 0 auto}
+.task.done span{color:var(--muted);text-decoration:line-through}
+.tag{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px;white-space:nowrap}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.split div{background:var(--panel-2);border-radius:8px;padding:10px}
+
+@media (max-width:900px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpis .kpi:first-child{grid-column:1/-1}
+  .grid{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:480px){
+  .offer-meta{grid-template-columns:repeat(3,minmax(0,1fr))}
+  form.log{grid-template-columns:minmax(0,1fr)}
+  .stage{height:420px}
+  .plabel{font-size:10px}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+.connect{border-color:var(--amber-dim)}
+.connect form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end}
+.connect .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.linkbtn{background:none;border:0;color:var(--muted);font-family:var(--mono);font-size:11px;cursor:pointer;padding:0;text-decoration:underline}
+.act{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.act:last-child{border-bottom:0}
+.act .label{white-space:nowrap;font-size:10px}
+.tag.agent{color:var(--teal);border-color:var(--teal)}
+@media (max-width:640px){ .connect form{grid-template-columns:minmax(0,1fr)} .act{flex-direction:column;gap:2px} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="label">Hataalii · monthly revenue instrument</div>
+      <h1>Revenue <span>Orbit</span></h1>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+      <div class="monthnav">
+        <button id="prevM" aria-label="Previous month">‹</button>
+        <div class="m" id="monthLabel">November 2026</div>
+        <button id="nextM" aria-label="Next month">›</button>
+      </div>
+      <div class="sync" id="sync">Connecting…</div>
+      <button class="linkbtn" id="whoBtn" type="button">Signed in as dashboard</button>
+    </div>
+  </header>
+
+  <section class="panel connect" id="connect" hidden>
+    <h2>Connect to the team orbit</h2>
+    <p class="sub">Enter your name so the activity feed shows who did what, and the team key set as ORBIT_API_KEY in Vercel. Both stay in this browser.</p>
+    <form id="connectForm">
+      <div class="field"><label class="label" for="cName">Your name</label><input id="cName" type="text" autocomplete="name" placeholder="e.g. JR"></div>
+      <div class="field"><label class="label" for="cKey">Team key</label><input id="cKey" type="password" autocomplete="current-password" placeholder="Paste the key"></div>
+      <button class="btn" type="submit">Connect</button>
+    </form>
+    <div class="row"><span class="msg" id="cMsg" style="color:var(--rose)"></span><button class="linkbtn" id="cSignout" type="button">Forget key on this device</button></div>
+  </section>
+
+  <section class="stage" aria-label="3D view of monthly target and service offers">
+    <canvas id="scene"></canvas>
+    <div class="labels" id="labels"></div>
+    <div class="hud">
+      <div class="label">Collected this month</div>
+      <div class="big num" id="hudCollected">$0</div>
+      <div class="of">of <span class="num">$21,100</span> target</div>
+      <span class="pill wait" id="hudPill">Month not started</span>
+    </div>
+    <div class="hint">Drag to orbit · tap a planet</div>
+  </section>
+
+  <section class="kpis" aria-label="Key numbers">
+    <div class="kpi">
+      <div class="label">Progress to $21,100</div>
+      <div class="v" id="kPct">0%</div>
+      <div class="bar"><i id="kBar" style="width:0%"></i></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Remaining</div>
+      <div class="v" id="kRemain">$21,100</div>
+      <div class="s" id="kDays">30 days left</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Needed per day</div>
+      <div class="v" id="kPace">$703</div>
+      <div class="s">to finish on target</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Bills floor $11,225</div>
+      <div class="v" id="kFloor">0%</div>
+      <div class="bar"><i class="t" id="kFloorBar" style="width:0%"></i></div>
+    </div>
+    <div class="kpi">
+      <div class="label">Playbook done</div>
+      <div class="v" id="kTasks">0 / 0</div>
+      <div class="s" id="kWeek">Week 1</div>
+    </div>
+  </section>
+
+  <nav class="chips" id="chips" aria-label="Offers"></nav>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" id="offerPanel" aria-live="polite"></section>
+
+      <section class="panel">
+        <h2>Log a sale</h2>
+        <p class="sub">Every payment you collect lights up its planet and fills the core.</p>
+        <form class="log" id="logForm">
+          <div class="field full">
+            <label class="label" for="fOffer">Offer</label>
+            <select id="fOffer"></select>
+          </div>
+          <div class="field">
+            <label class="label" for="fWho">Client or note</label>
+            <input id="fWho" type="text" placeholder="e.g. Short North barbershop" autocomplete="off">
+          </div>
+          <div class="field">
+            <label class="label" for="fAmt">Amount ($)</label>
+            <input id="fAmt" type="number" min="1" step="1" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label class="label" for="fDate">Date</label>
+            <input id="fDate" type="date">
+          </div>
+          <div class="field" style="justify-content:flex-end">
+            <button class="btn" type="submit">Add to month</button>
+          </div>
+          <div class="msg full" id="logMsg"></div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Ledger</h2>
+        <p class="sub" id="ledgerSub">Payments logged for this month.</p>
+        <div class="tablewrap"><table class="ledger">
+          <thead><tr><th>Date</th><th>Offer</th><th>Client</th><th class="amt">Amount</th><th></th></tr></thead>
+          <tbody id="ledgerBody"></tbody>
+        </table></div>
+        <div class="empty" id="ledgerEmpty">No payments logged yet. Log your first sale above and its planet starts to glow.</div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <h2>Where the $21,100 goes</h2>
+        <p class="sub">Your stated split: bills and investments first, then company profit.</p>
+        <div class="split">
+          <div><div class="label">Personal + bills</div><div class="num" style="font-size:16px">$10,600</div><div class="bar"><i class="t" id="sPersonal" style="width:0%"></i></div></div>
+          <div><div class="label">Collective AI profit</div><div class="num" style="font-size:16px">$10,500</div><div class="bar"><i id="sProfit" style="width:0%"></i></div></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Team activity</h2>
+        <p class="sub">Sales, finished tasks and notes from teammates and connected agents.</p>
+        <div id="activity"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Monthly playbook</h2>
+        <p class="sub">The same four-week cadence resets every month. Ticks save per month.</p>
+        <div id="playbook"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script type="module">
+import { TARGET, FLOOR, PERSONAL, OFFERS, WEEKS, ALL_TASKS, PLAN_TOTAL } from "./lib/plan.js";
+(function(){
+
+
+const $ = id => document.getElementById(id);
+const fmt = n => "$" + Math.round(n).toLocaleString("en-US");
+const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hex = c => "#" + c.toString(16).padStart(6,"0");
+
+/* ---------- month ---------- */
+const today = new Date();
+let viewYear, viewMonth; // month 0-based
+(function initMonth(){
+  const start = new Date(2026,10,1);
+  const t = new Date(today.getFullYear(), today.getMonth(), 1);
+  const m = t < start ? start : t;
+  viewYear = m.getFullYear(); viewMonth = m.getMonth();
+})();
+const monthKey = () => viewYear + "-" + String(viewMonth+1).padStart(2,"0");
+const daysIn = () => new Date(viewYear, viewMonth+1, 0).getDate();
+function timeInfo(){
+  const dim = daysIn();
+  const start = new Date(viewYear, viewMonth, 1);
+  const end = new Date(viewYear, viewMonth, dim, 23, 59, 59);
+  if (today < start) return {state:"future", dayOfMonth:0, daysLeft:dim, frac:0, dim};
+  if (today > end) return {state:"past", dayOfMonth:dim, daysLeft:0, frac:1, dim};
+  const d = today.getDate();
+  return {state:"now", dayOfMonth:d, daysLeft:dim-d+1, frac:(d-0.5)/dim, dim};
+}
+
+/* ---------- state + storage ---------- */
+let S = {logs:[], done:{}}, activity = [];
+let mode = "remote"; // "remote" = shared API, "local" = this browser only
+let pollTimer = null, busy = false;
+const LS = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+function lsKey(){ return "revorbit:" + monthKey(); }
+function setSync(t){ $("sync").textContent = t; }
+const actorName = () => LS.get("orbit:name") || "dashboard";
+
+async function api(method, body){
+  const headers = {"Content-Type":"application/json"};
+  const key = LS.get("orbit:key"); if (key) headers.Authorization = "Bearer " + key;
+  const url = method === "GET" ? "api/state?month=" + monthKey() : "api/state";
+  const r = await fetch(url, {method, headers, body: body ? JSON.stringify(body) : undefined, cache:"no-store"});
+  let j = null; try{ j = await r.json(); }catch(e){}
+  if (!r.ok){ const err = new Error((j && j.error) || ("HTTP " + r.status)); err.status = r.status; throw err; }
+  return j;
+}
+function applyServer(j){
+  S = {logs: j.logs || [], done: j.done || {}};
+  activity = j.activity || [];
+  setSync((j.persistent ? "Live · shared" : "Live · temporary storage") + " · " + new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}));
+}
+function showKeyPanel(msg){
+  $("connect").hidden = false;
+  $("cMsg").textContent = msg || "";
+  $("cName").value = LS.get("orbit:name") || "";
+}
+async function attach(){
+  S = {logs:[], done:{}};
+  if (mode === "remote"){
+    try{
+      applyServer(await api("GET"));
+      $("connect").hidden = true;
+      startPoll();
+    }catch(e){
+      if (e.status === 401 || e.status === 503){ showKeyPanel(e.message); setSync("Team key needed"); }
+      else { mode = "local"; }
+    }
+  }
+  if (mode === "local"){
+    try{ const raw = LS.get(lsKey()); if (raw) S = JSON.parse(raw); }catch(e){}
+    setSync("Offline mode · this browser only");
+  }
+  render();
+}
+function startPoll(){
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    if (document.hidden || busy || mode !== "remote") return;
+    try{ applyServer(await api("GET")); render(); }catch(e){}
+  }, 20000);
+}
+// Run an action against the API (or locally), then re-render.
+async function act(body, localFn){
+  if (mode === "local"){
+    localFn();
+    LS.set(lsKey(), JSON.stringify({logs:S.logs, done:S.done}));
+    render(); return true;
+  }
+  busy = true;
+  try{ applyServer(await api("POST", {...body, month: body.month || monthKey(), actor: actorName()})); render(); return true; }
+  catch(e){ setSync("Not saved: " + e.message); if (e.status === 401) showKeyPanel(e.message); return false; }
+  finally{ busy = false; }
+}
+
+/* ---------- derived ---------- */
+function totals(){
+  const by = {}; OFFERS.forEach(o=>by[o.id]={sum:0,count:0});
+  let sum = 0;
+  S.logs.forEach(l=>{ const a = Number(l.amount)||0; sum += a; if (by[l.offer]){ by[l.offer].sum += a; by[l.offer].count++; } });
+  return {sum, by};
+}
+
+/* ---------- render ---------- */
+let selected = "web";
+function render(){
+  const {sum, by} = totals();
+  const ti = timeInfo();
+  const pct = Math.min(1, sum / TARGET);
+  const remain = Math.max(0, TARGET - sum);
+
+  $("monthLabel").textContent = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  $("hudCollected").textContent = fmt(sum);
+  $("kPct").textContent = Math.round(pct*100) + "%";
+  $("kBar").style.width = (pct*100) + "%";
+  $("kRemain").textContent = fmt(remain);
+  $("kDays").textContent = ti.state==="past" ? "Month closed" : ti.daysLeft + " days left";
+  $("kPace").textContent = ti.daysLeft ? fmt(remain / ti.daysLeft) : "—";
+  const fp = Math.min(1, sum / FLOOR);
+  $("kFloor").textContent = Math.round(fp*100) + "%";
+  $("kFloorBar").style.width = (fp*100) + "%";
+  $("sPersonal").style.width = (Math.min(1,sum/PERSONAL)*100) + "%";
+  $("sProfit").style.width = (Math.min(1,Math.max(0,sum-PERSONAL)/(TARGET-PERSONAL))*100) + "%";
+
+  const doneCount = ALL_TASKS.filter(k=>S.done[k]).length;
+  $("kTasks").textContent = doneCount + " / " + ALL_TASKS.length;
+  const curWeek = currentWeek(ti);
+  $("kWeek").textContent = ti.state==="future" ? "Starts " + new Date(viewYear,viewMonth,1).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : (ti.state==="past" ? "Month closed" : "Week " + curWeek.n + ": " + curWeek.title);
+
+  const pill = $("hudPill");
+  if (sum >= TARGET){ pill.className="pill on"; pill.textContent="Target hit"; }
+  else if (ti.state==="future"){ pill.className="pill wait"; pill.textContent="Starts in " + Math.ceil((new Date(viewYear,viewMonth,1)-today)/864e5) + " days"; }
+  else {
+    const expected = TARGET * ti.frac;
+    if (sum >= expected){ pill.className="pill on"; pill.textContent="On pace"; }
+    else { pill.className="pill behind"; pill.textContent = fmt(expected - sum) + " behind pace"; }
+  }
+
+  renderChips(by);
+  renderOffer(by);
+  renderLedger();
+  renderPlaybook(ti);
+  renderActivity();
+  $("whoBtn").textContent = "Signed in as " + actorName();
+  scene3d && scene3d.update(pct, by);
+}
+function renderActivity(){
+  const el = $("activity");
+  if (!activity.length){ el.innerHTML = '<div class="empty">' + (mode==="local" ? "Team activity appears once the page is deployed with its API." : "No activity yet. Sales, finished tasks and agent notes land here.") + '</div>'; return; }
+  el.innerHTML = activity.slice(0,15).map(a=>{
+    const when = new Date(a.at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+    const src = a.source === "mcp" ? '<span class="tag agent">agent</span>' : '<span class="tag">' + esc(a.source||"") + '</span>';
+    return '<div class="act"><div>' + esc(a.summary||"") + src + '</div><div class="label">' + esc(when) + '</div></div>';
+  }).join("");
+}
+function currentWeek(ti){
+  const d = Math.max(1, ti.dayOfMonth);
+  return WEEKS.find(w=>d>=w.days[0] && d<=w.days[1]) || WEEKS[0];
+}
+function renderChips(by){
+  $("chips").innerHTML = OFFERS.map(o=>{
+    const goal = o.price*o.qty, p = Math.round(Math.min(1, by[o.id].sum/goal)*100);
+    return `<button class="chip" data-id="${o.id}" aria-pressed="${o.id===selected}"><span class="dot" style="background:${hex(o.color)}"></span>${esc(o.short)} <span class="p">${p}%</span></button>`;
+  }).join("");
+}
+function renderOffer(by){
+  const o = OFFERS.find(x=>x.id===selected);
+  const goal = o.price*o.qty, got = by[o.id];
+  const p = Math.min(1, got.sum/goal);
+  $("offerPanel").innerHTML = `
+    <div class="offer-head"><h2 style="color:${hex(o.color)}">${esc(o.name)}</h2><span class="label">${fmt(o.price)} each</span></div>
+    <div class="offer-meta">
+      <div><div class="label">Plan</div><div class="v">${o.qty} × ${fmt(o.price)}</div></div>
+      <div><div class="label">Collected</div><div class="v">${fmt(got.sum)}</div></div>
+      <div><div class="label">Sales</div><div class="v">${got.count} / ${o.qty}</div></div>
+    </div>
+    <div class="bar" style="margin:0 0 14px"><i style="width:${p*100}%;background:${hex(o.color)}"></i></div>
+    <dl class="facts">
+      <dt>Offer</dt><dd>${esc(o.pitch)}</dd>
+      <dt>Proof</dt><dd>${esc(o.proof)}</dd>
+      <dt>Buyer</dt><dd>${esc(o.buyer)}</dd>
+    </dl>
+    <div class="label" style="margin-bottom:6px">Moves this month</div>
+    <ol class="moves">${o.moves.map(m=>`<li>${esc(m)}</li>`).join("")}</ol>`;
+}
+function renderLedger(){
+  const rows = S.logs.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  $("ledgerEmpty").hidden = rows.length>0;
+  $("ledgerBody").innerHTML = rows.map(l=>{
+    const o = OFFERS.find(x=>x.id===l.offer) || {short:l.offer,color:0x888888};
+    const d = l.date ? new Date(l.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "";
+    return `<tr><td class="num">${esc(d)}</td><td><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${hex(o.color)};margin-right:6px"></span>${esc(o.short)}</td><td>${esc(l.who||"—")}</td><td class="amt">${fmt(l.amount)}</td><td><button class="btn ghost" data-del="${esc(l.id)}" aria-label="Remove entry">Remove</button></td></tr>`;
+  }).join("");
+  $("ledgerSub").textContent = rows.length ? rows.length + " payment" + (rows.length>1?"s":"") + " logged this month." : "Payments logged for this month.";
+}
+function renderPlaybook(ti){
+  const cur = ti.state==="now" ? currentWeek(ti).n : 0;
+  const dim = ti.dim;
+  $("playbook").innerHTML = WEEKS.filter(w=>w.days[0]<=dim).map(w=>{
+    const end = Math.min(w.days[1], dim);
+    return `<div class="week">
+      <div class="week-h"><h3>Days ${w.days[0]}–${end} · ${esc(w.title)}</h3>${w.n===cur?'<span class="now">This week</span>':''}</div>
+      ${w.tasks.map(t=>`<label class="task ${S.done[t[0]]?'done':''}"><input type="checkbox" id="t-${t[0]}" data-task="${t[0]}" ${S.done[t[0]]?'checked':''}><span>${esc(t[1])}<span class="tag">${esc(t[2])}</span></span></label>`).join("")}
+    </div>`;
+  }).join("");
+}
+
+/* ---------- events ---------- */
+$("chips").addEventListener("click", e=>{ const b = e.target.closest(".chip"); if (b) select(b.dataset.id); });
+function select(id){ selected = id; $("fOffer").value = id; $("fAmt").value = OFFERS.find(o=>o.id===id).price; render(); }
+$("fOffer").innerHTML = OFFERS.map(o=>`<option value="${o.id}">${esc(o.name)} — ${fmt(o.price)}</option>`).join("");
+$("fOffer").addEventListener("change", e=>{ selected = e.target.value; $("fAmt").value = OFFERS.find(o=>o.id===selected).price; render(); });
+function defaultDate(){
+  const ti = timeInfo();
+  const d = ti.state==="now" ? today.getDate() : 1;
+  return viewYear + "-" + String(viewMonth+1).padStart(2,"0") + "-" + String(d).padStart(2,"0");
+}
+$("logForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const msg = $("logMsg");
+  const amt = Math.round(Number($("fAmt").value));
+  if (!amt || amt < 1){ msg.textContent = "Enter an amount above $0."; msg.style.color="var(--rose)"; return; }
+  const date = $("fDate").value || defaultDate();
+  const offer = $("fOffer").value, who = $("fWho").value.trim().slice(0,80);
+  const ok = await act({action:"log_sale", offer, amount:amt, client:who, date, month: date.slice(0,7)}, ()=>{
+    S.logs.push({id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), offer, who, amount:amt, date, actor: actorName()});
+  });
+  if (ok){
+    $("fWho").value = "";
+    msg.style.color="var(--teal)";
+    msg.textContent = "Logged " + fmt(amt) + " to " + OFFERS.find(o=>o.id===offer).short + (date.slice(0,7)!==monthKey() ? " (counts in " + date.slice(0,7) + ")" : "") + ".";
+  } else { msg.style.color="var(--rose)"; msg.textContent = "That sale was not saved. Check the team key and try again."; }
+});
+$("ledgerBody").addEventListener("click", e=>{
+  const b = e.target.closest("[data-del]"); if (!b) return;
+  if (b.dataset.confirm !== "1"){ b.dataset.confirm = "1"; b.textContent = "Confirm"; setTimeout(()=>{ if (b.isConnected){ b.dataset.confirm=""; b.textContent="Remove"; } }, 3000); return; }
+  const id = b.dataset.del;
+  act({action:"remove_sale", id}, ()=>{ S.logs = S.logs.filter(l=>l.id !== id); });
+});
+$("playbook").addEventListener("change", e=>{
+  const k = e.target.dataset.task; if (!k) return;
+  const on = e.target.checked;
+  act({action:"set_task", task_id:k, done:on}, ()=>{ if (on) S.done[k] = {done:true}; else delete S.done[k]; });
+});
+$("connectForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const name = $("cName").value.trim().slice(0,60), key = $("cKey").value.trim();
+  if (name) LS.set("orbit:name", name);
+  if (key) LS.set("orbit:key", key);
+  $("cKey").value = ""; mode = "remote"; attach();
+});
+$("cSignout").addEventListener("click", ()=>{ LS.del("orbit:key"); showKeyPanel("Signed out on this device."); });
+$("whoBtn").addEventListener("click", ()=>{ showKeyPanel(""); $("cName").focus(); });
+function shiftMonth(d){
+  const m = new Date(viewYear, viewMonth + d, 1);
+  viewYear = m.getFullYear(); viewMonth = m.getMonth();
+  $("fDate").value = defaultDate(); attach();
+}
+$("prevM").addEventListener("click", ()=>shiftMonth(-1));
+$("nextM").addEventListener("click", ()=>shiftMonth(1));
+
+/* ---------- 3D ---------- */
+let scene3d = null;
+function build3d(){
+  if (!window.THREE) return null;
+  const canvas = $("scene"), stage = canvas.parentElement, labelsEl = $("labels");
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let renderer;
+  try{ renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true}); }catch(e){ return null; }
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x090b12, 0.018);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+  camera.position.set(0, 13, 30);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.enablePan = false;
+  controls.minDistance = 14; controls.maxDistance = 55;
+  controls.autoRotate = !reduce; controls.autoRotateSpeed = 0.35;
+
+  scene.add(new THREE.AmbientLight(0x404660, 0.9));
+  const key = new THREE.PointLight(0xffc27a, 2.2, 80); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x6fa8ff, 0.5); rim.position.set(-10,8,-12); scene.add(rim);
+
+  // starfield
+  const sg = new THREE.BufferGeometry(), N = 900, pos = new Float32Array(N*3);
+  for (let i=0;i<N;i++){ const r = 40+Math.random()*60, t=Math.random()*Math.PI*2, p=Math.acos(2*Math.random()-1);
+    pos[i*3]=r*Math.sin(p)*Math.cos(t); pos[i*3+1]=r*Math.cos(p)*0.6; pos[i*3+2]=r*Math.sin(p)*Math.sin(t); }
+  sg.setAttribute("position", new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(sg, new THREE.PointsMaterial({color:0x8d91a6, size:0.12, transparent:true, opacity:0.7})));
+
+  // core: target
+  const core = new THREE.Group(); scene.add(core);
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(3.4, 1), new THREE.MeshBasicMaterial({color:0x7a5421, wireframe:true, transparent:true, opacity:0.55}));
+  core.add(shell);
+  const fillMat = new THREE.MeshStandardMaterial({color:0xf0a53a, emissive:0xf0a53a, emissiveIntensity:0.6, roughness:0.35, metalness:0.2});
+  const fill = new THREE.Mesh(new THREE.SphereGeometry(3, 48, 32), fillMat);
+  core.add(fill);
+  // progress ring around the core
+  let ring = null;
+  const ringBase = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.06, 8, 120), new THREE.MeshBasicMaterial({color:0x262b3d}));
+  ringBase.rotation.x = Math.PI/2; core.add(ringBase);
+  // floor marker on ring (bills floor)
+  const floorAng = (FLOOR/TARGET)*Math.PI*2;
+  const fm = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), new THREE.MeshBasicMaterial({color:0x52cdb8}));
+  fm.position.set(Math.cos(floorAng)*4.6, 0, -Math.sin(floorAng)*4.6); core.add(fm);
+  function setRing(p){
+    if (ring){ core.remove(ring); ring.geometry.dispose(); }
+    if (p <= 0.001) { ring = null; return; }
+    ring = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.16, 10, 160, Math.max(0.02, p*Math.PI*2)), new THREE.MeshBasicMaterial({color: p>=1?0x52cdb8:0xf0a53a}));
+    ring.rotation.x = Math.PI/2; core.add(ring);
+  }
+
+  // planets
+  const planets = OFFERS.map((o,i)=>{
+    const goal = o.price*o.qty;
+    const radius = 7.5 + i*1.7;
+    const size = 0.45 + Math.sqrt(goal/PLAN_TOTAL)*2.2;
+    const g = new THREE.Group(); scene.add(g);
+    const tilt = (i%2?1:-1)*0.06*(1+i%3);
+    g.rotation.z = tilt;
+    const orbit = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.015, 4, 200), new THREE.MeshBasicMaterial({color:0x262b3d, transparent:true, opacity:0.9}));
+    orbit.rotation.x = Math.PI/2; g.add(orbit);
+    const pivot = new THREE.Group(); g.add(pivot);
+    const mat = new THREE.MeshStandardMaterial({color:o.color, emissive:o.color, emissiveIntensity:0.05, roughness:0.55, metalness:0.1, transparent:true, opacity:0.55});
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 32, 20), mat);
+    mesh.position.x = radius; mesh.userData.id = o.id; pivot.add(mesh);
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(size*1.55, 0.04, 6, 64), new THREE.MeshBasicMaterial({color:0x3a3f55}));
+    halo.position.x = radius; pivot.add(halo);
+    let arc = null;
+    const label = document.createElement("div"); label.className = "plabel"; labelsEl.appendChild(label);
+    const speed = 0.06 + 0.5/ (radius);
+    pivot.rotation.y = i * 2.399; // golden-angle spread
+    return {o, goal, g, pivot, mesh, mat, halo, arc, size, radius, label, speed, p:0};
+  });
+  function setPlanet(pl, p){
+    pl.p = p;
+    pl.mat.opacity = 0.45 + 0.55*Math.min(1,p);
+    pl.mat.emissiveIntensity = 0.05 + 0.9*Math.min(1,p);
+    if (pl.arc){ pl.pivot.remove(pl.arc); pl.arc.geometry.dispose(); pl.arc = null; }
+    if (p > 0.001){
+      pl.arc = new THREE.Mesh(new THREE.TorusGeometry(pl.size*1.55, 0.09, 6, 80, Math.max(0.05, Math.min(1,p)*Math.PI*2)), new THREE.MeshBasicMaterial({color:pl.o.color}));
+      pl.arc.position.x = pl.radius; pl.pivot.add(pl.arc);
+    }
+  }
+
+  // picking
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+  let downAt = null;
+  canvas.addEventListener("pointerdown", e=>{ downAt = [e.clientX, e.clientY]; });
+  canvas.addEventListener("pointerup", e=>{
+    if (!downAt) return; const moved = Math.hypot(e.clientX-downAt[0], e.clientY-downAt[1]); downAt = null;
+    if (moved > 6) return;
+    const r = canvas.getBoundingClientRect();
+    mouse.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+    ray.setFromCamera(mouse, camera);
+    const hit = ray.intersectObjects(planets.map(p=>p.mesh))[0];
+    if (hit){ select(hit.object.userData.id); const el = $("offerPanel"); if (window.innerWidth < 900) el.scrollIntoView({behavior:reduce?"auto":"smooth", block:"start"}); }
+  });
+
+  function resize(){
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w/h;
+    camera.position.setLength(w < 520 ? 40 : 30);
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize); resize();
+
+  let target = 0, shown = 0, t0 = performance.now(), visible = true;
+  document.addEventListener("visibilitychange", ()=>{ visible = !document.hidden; });
+  const v = new THREE.Vector3();
+  function frame(now){
+    requestAnimationFrame(frame);
+    if (!visible) return;
+    const t = (now - t0)/1000;
+    shown += (target - shown) * 0.06;
+    const s = 0.25 + 0.75*Math.min(1, shown);
+    fill.scale.setScalar(s);
+    if (!reduce){
+      fill.scale.multiplyScalar(1 + Math.sin(t*1.6)*0.015);
+      shell.rotation.y = t*0.12; shell.rotation.x = t*0.05;
+    }
+    fillMat.emissiveIntensity = 0.35 + 0.6*Math.min(1, shown);
+    const w = stage.clientWidth, h = stage.clientHeight;
+    planets.forEach(pl=>{
+      if (!reduce) pl.pivot.rotation.y += pl.speed * 0.016;
+      pl.mesh.getWorldPosition(v); v.project(camera);
+      const behind = v.z > 1;
+      pl.label.style.display = behind ? "none" : "block";
+      pl.label.style.left = ((v.x+1)/2*w) + "px";
+      pl.label.style.top = ((1-v.y)/2*h) + "px";
+      pl.label.classList.toggle("sel", pl.o.id === selected);
+      pl.halo.material.color.setHex(pl.o.id === selected ? 0xf0a53a : 0x3a3f55);
+    });
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(frame);
+
+  return {
+    update(pct, by){
+      target = pct; setRing(pct);
+      planets.forEach(pl=>{
+        const p = by[pl.o.id].sum / pl.goal;
+        setPlanet(pl, p);
+        pl.label.innerHTML = esc(pl.o.short) + " <b>" + Math.round(Math.min(1,p)*100) + "%</b>";
+      });
+    }
+  };
+}
+
+/* ---------- boot ---------- */
+$("fAmt").value = OFFERS[0].price;
+$("fDate").value = defaultDate();
+scene3d = build3d();
+if (!scene3d){ document.querySelector(".hint").textContent = "3D view unavailable in this browser"; }
+attach();
+})();
+</script>
+</body>
+</html>

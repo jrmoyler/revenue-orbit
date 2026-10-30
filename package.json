@@ -1,0 +1,12 @@
+{
+  "name": "revenue-orbit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live 3D revenue tracker for the $21,100 monthly target, with a REST API for the dashboard and an MCP server for LLMs and agents.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "test": "node scripts/smoke.js"
+  }
+}
