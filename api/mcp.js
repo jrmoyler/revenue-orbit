@@ -3,12 +3,12 @@
 //   URL:    https://<your-deployment>/mcp
 //   Header: Authorization: Bearer <ORBIT_API_KEY>
 import { authorize, readJson, send } from "../lib/http.js";
-import { getMonth, getActivity, logSale, removeSale, setTask, logActivity, currentMonth, OrbitError } from "../lib/orbit.js";
-import { OFFERS, WEEKS, TARGET, FLOOR } from "../lib/plan.js";
+import { getMonth, getActivity, getBills, logSale, removeSale, setTask, logActivity, currentMonth, OrbitError } from "../lib/orbit.js";
+import { OFFERS, WEEKS, TARGET } from "../lib/plan.js";
 
 const SUPPORTED = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const SERVER = { name: "revenue-orbit", version: "1.0.0" };
-const INSTRUCTIONS = `Revenue Orbit tracks Hataalii's (JR's) monthly revenue target of $${TARGET.toLocaleString("en-US")} (bills floor $${FLOOR.toLocaleString("en-US")}) across nine service offers and a four-week playbook.
+const instructions = () => `Revenue Orbit tracks Hataalii's (JR's) monthly revenue target of $${TARGET.toLocaleString("en-US")}${getBills() ? ` (bills floor $${getBills().floor.toLocaleString("en-US")})` : ""} across nine service offers and a four-week playbook.
 - Call get_month first to see progress, pace and which playbook tasks are open.
 - Log every collected payment with log_sale (amount defaults to the offer price). Only log money actually received, not proposals.
 - Mark playbook work with complete_task. Record other meaningful progress (calls booked, proposals sent) with log_activity.
@@ -62,7 +62,7 @@ const TOOLS = [
 function monthView(s) {
   const tasks = WEEKS.map(w => ({ week: w.n, days: `${w.days[0]}-${Math.min(w.days[1], s.summary.days_in_month)}`, title: w.title,
     tasks: w.tasks.map(t => ({ id: t[0], text: t[1], tag: t[2], done: Boolean(s.done[t[0]]), by: s.done[t[0]]?.by })) }));
-  return { month: s.month, summary: s.summary, playbook: tasks, sales: s.logs,
+  return { month: s.month, summary: s.summary, ...(s.bills && { bills: s.bills }), playbook: tasks, sales: s.logs,
     storage: s.persistent ? "redis" : "memory (not persistent — connect Upstash Redis)", vault_bridge: Boolean(process.env.VAULT_MCP_URL) };
 }
 
@@ -90,7 +90,7 @@ async function handle(msg) {
   switch (method) {
     case "initialize": {
       const v = SUPPORTED.includes(params.protocolVersion) ? params.protocolVersion : SUPPORTED[0];
-      return ok({ protocolVersion: v, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER, instructions: INSTRUCTIONS });
+      return ok({ protocolVersion: v, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER, instructions: instructions() });
     }
     case "ping": return ok({});
     case "tools/list": return ok({ tools: TOOLS });

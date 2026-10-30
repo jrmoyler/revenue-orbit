@@ -13,9 +13,10 @@ A live 3D tracker for the **$21,100 monthly target**. Nine service offers orbit 
 
 1. **Import the repo.** Vercel → Add New → Project → `jrmoyler/revenue-orbit`. Framework preset: **Other**. No build command, no output directory.
 2. **Add storage.** Project → Storage → Create → **Upstash for Redis** (Marketplace) → connect it to this project. Vercel adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
-3. **Set the team key.** Project → Settings → Environment Variables → add `ORBIT_API_KEY` with a long random value (for example the output of `openssl rand -hex 32`). Everyone on the team and every agent uses this key.
-4. **Redeploy** so the new variables load.
-5. Open the site, enter your name and the team key. Your name goes on everything you log.
+3. **Set the team key.** Project → Settings → Environment Variables → add `ORBIT_API_KEY` with a long random value (for example the output of `openssl rand -hex 32`). This is the owner key: it unlocks the shared data and your private bills, so only give it to people and agents you trust with both.
+4. **Set your private bills** (optional). Add `ORBIT_BILLS` as JSON, e.g. `{"floor":1234,"personal":5678}` (`floor` = fixed monthly bills, `personal` = personal + business expenses). Only requests carrying `ORBIT_API_KEY` ever receive these figures. Visitors without the key see no bills and can add their own list, which stays in their browser.
+5. **Redeploy** so the new variables load.
+6. Open the site, enter your name and the key. Your name goes on everything you log.
 
 Without `ORBIT_API_KEY`, production refuses all requests. Preview and local runs stay open so you can test.
 
@@ -102,4 +103,4 @@ Local runs use in-memory storage unless you put the Redis variables in your shel
 
 ## Change the plan
 
-Edit `lib/plan.js`: offer prices and quantities, the target, the bills floor or the playbook tasks. Keep task ids stable once a month has started, since done state is stored by id.
+Edit `lib/plan.js`: offer prices and quantities, the target or the playbook tasks. Monthly bills are private and live in the `ORBIT_BILLS` env var, not in this file. Keep task ids stable once a month has started, since done state is stored by id.

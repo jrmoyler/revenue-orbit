@@ -121,6 +121,10 @@ form.log .full{grid-column:1/-1}
 .task.done span{color:var(--muted);text-decoration:line-through}
 .tag{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px;white-space:nowrap}
 
+.billform{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) auto;gap:10px;align-items:end;margin-bottom:8px}
+.billrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.billrow .amt{font-family:var(--mono);margin-left:auto}
+@media (max-width:640px){ .billform{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .billform .btn{grid-column:1/-1} }
 .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .split div{background:var(--panel-2);border-radius:8px;padding:10px}
 
@@ -206,7 +210,7 @@ form.log .full{grid-column:1/-1}
       <div class="s">to finish on target</div>
     </div>
     <div class="kpi">
-      <div class="label">Bills floor $11,225</div>
+      <div class="label" id="kFloorLabel">Your bills</div>
       <div class="v" id="kFloor">0%</div>
       <div class="bar"><i class="t" id="kFloorBar" style="width:0%"></i></div>
     </div>
@@ -262,13 +266,25 @@ form.log .full{grid-column:1/-1}
     </div>
 
     <div class="col">
-      <section class="panel">
+      <section class="panel" id="splitPanel" hidden>
         <h2>Where the $21,100 goes</h2>
         <p class="sub">Your stated split: bills and investments first, then company profit.</p>
         <div class="split">
-          <div><div class="label">Personal + bills</div><div class="num" style="font-size:16px">$10,600</div><div class="bar"><i class="t" id="sPersonal" style="width:0%"></i></div></div>
-          <div><div class="label">Collective AI profit</div><div class="num" style="font-size:16px">$10,500</div><div class="bar"><i id="sProfit" style="width:0%"></i></div></div>
+          <div><div class="label">Personal + bills</div><div class="num" style="font-size:16px" id="sPersonalNum"></div><div class="bar"><i class="t" id="sPersonal" style="width:0%"></i></div></div>
+          <div><div class="label">Collective AI profit</div><div class="num" style="font-size:16px" id="sProfitNum"></div><div class="bar"><i id="sProfit" style="width:0%"></i></div></div>
         </div>
+      </section>
+
+      <section class="panel" id="billsPanel" hidden>
+        <h2>Your monthly bills</h2>
+        <p class="sub">Add what you owe each month to see how much of it this month's sales cover. Saved in this browser only and never sent to the server.</p>
+        <form class="billform" id="billForm">
+          <div class="field"><label class="label" for="bName">Bill</label><input id="bName" type="text" maxlength="40" placeholder="e.g. Rent" autocomplete="off" required></div>
+          <div class="field"><label class="label" for="bAmt">Per month ($)</label><input id="bAmt" type="number" min="1" step="1" inputmode="numeric" required></div>
+          <button class="btn" type="submit">Add</button>
+        </form>
+        <div id="billList"></div>
+        <div class="empty" id="billEmpty">No bills added yet.</div>
       </section>
 
       <section class="panel">
@@ -289,7 +305,7 @@ form.log .full{grid-column:1/-1}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script type="module">
-import { TARGET, FLOOR, PERSONAL, OFFERS, WEEKS, ALL_TASKS, PLAN_TOTAL } from "./lib/plan.js";
+import { TARGET, OFFERS, WEEKS, ALL_TASKS, PLAN_TOTAL } from "./lib/plan.js";
 (function(){
 
 
@@ -321,6 +337,7 @@ function timeInfo(){
 
 /* ---------- state + storage ---------- */
 let S = {logs:[], done:{}}, activity = [];
+let serverBills = null; // owner bills; only present in responses to a valid team key
 let mode = "remote"; // "remote" = shared API, "local" = this browser only
 let pollTimer = null, busy = false;
 const LS = {
@@ -343,6 +360,7 @@ async function api(method, body){
 }
 function applyServer(j){
   S = {logs: j.logs || [], done: j.done || {}};
+  serverBills = j.bills || null;
   activity = j.activity || [];
   setSync((j.persistent ? "Live · shared" : "Live · temporary storage") + " · " + new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}));
 }
@@ -352,7 +370,7 @@ function showKeyPanel(msg){
   $("cName").value = LS.get("orbit:name") || "";
 }
 async function attach(){
-  S = {logs:[], done:{}};
+  S = {logs:[], done:{}}; serverBills = null;
   if (mode === "remote"){
     try{
       applyServer(await api("GET"));
@@ -389,6 +407,17 @@ async function act(body, localFn){
   finally{ busy = false; }
 }
 
+/* ---------- bills ---------- */
+// Owner bills come from the API. Everyone else keeps their own list in this browser.
+let myBills = [];
+try{ const raw = JSON.parse(LS.get("orbit:bills") || "[]"); if (Array.isArray(raw)) myBills = raw.filter(b=>b && Number.isFinite(b.amount) && b.amount>0).slice(0,100); }catch(e){}
+const saveBills = () => LS.set("orbit:bills", JSON.stringify(myBills));
+function activeBills(){
+  if (serverBills) return {floor: serverBills.floor, personal: serverBills.personal, mine:false};
+  const floor = myBills.reduce((s,b)=>s+b.amount, 0);
+  return floor ? {floor, personal:null, mine:true} : null;
+}
+
 /* ---------- derived ---------- */
 function totals(){
   const by = {}; OFFERS.forEach(o=>by[o.id]={sum:0,count:0});
@@ -412,11 +441,7 @@ function render(){
   $("kRemain").textContent = fmt(remain);
   $("kDays").textContent = ti.state==="past" ? "Month closed" : ti.daysLeft + " days left";
   $("kPace").textContent = ti.daysLeft ? fmt(remain / ti.daysLeft) : "—";
-  const fp = Math.min(1, sum / FLOOR);
-  $("kFloor").textContent = Math.round(fp*100) + "%";
-  $("kFloorBar").style.width = (fp*100) + "%";
-  $("sPersonal").style.width = (Math.min(1,sum/PERSONAL)*100) + "%";
-  $("sProfit").style.width = (Math.min(1,Math.max(0,sum-PERSONAL)/(TARGET-PERSONAL))*100) + "%";
+  renderBills(sum);
 
   const doneCount = ALL_TASKS.filter(k=>S.done[k]).length;
   $("kTasks").textContent = doneCount + " / " + ALL_TASKS.length;
@@ -438,7 +463,27 @@ function render(){
   renderPlaybook(ti);
   renderActivity();
   $("whoBtn").textContent = "Signed in as " + actorName();
-  scene3d && scene3d.update(pct, by);
+  const ab = activeBills();
+  scene3d && scene3d.update(pct, by, ab ? ab.floor/TARGET : null);
+}
+function renderBills(sum){
+  const ab = activeBills();
+  $("kFloorLabel").textContent = ab ? (ab.mine ? "Your bills " : "Bills floor ") + fmt(ab.floor) : "Your bills";
+  const fp = ab ? Math.min(1, sum / ab.floor) : 0;
+  $("kFloor").textContent = ab ? Math.round(fp*100) + "%" : "—";
+  $("kFloorBar").style.width = (fp*100) + "%";
+  $("splitPanel").hidden = !(serverBills);
+  $("billsPanel").hidden = Boolean(serverBills);
+  if (serverBills){
+    const {personal} = serverBills;
+    $("sPersonalNum").textContent = fmt(personal);
+    $("sProfitNum").textContent = fmt(TARGET - personal);
+    $("sPersonal").style.width = (Math.min(1,sum/personal)*100) + "%";
+    $("sProfit").style.width = (Math.min(1,Math.max(0,sum-personal)/(TARGET-personal))*100) + "%";
+    return;
+  }
+  $("billEmpty").hidden = myBills.length > 0;
+  $("billList").innerHTML = myBills.map(b=>`<div class="billrow"><span>${esc(b.name)}</span><span class="amt">${fmt(b.amount)}</span><button class="btn ghost" data-bill="${esc(b.id)}" aria-label="Remove ${esc(b.name)}">Remove</button></div>`).join("");
 }
 function renderActivity(){
   const el = $("activity");
@@ -538,6 +583,17 @@ $("playbook").addEventListener("change", e=>{
   const on = e.target.checked;
   act({action:"set_task", task_id:k, done:on}, ()=>{ if (on) S.done[k] = {done:true}; else delete S.done[k]; });
 });
+$("billForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const name = $("bName").value.trim().slice(0,40), amount = Math.round(Number($("bAmt").value));
+  if (!name || !(amount >= 1) || amount > 10000000 || myBills.length >= 100) return;
+  myBills.push({id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), name, amount});
+  saveBills(); $("bName").value = ""; $("bAmt").value = ""; $("bName").focus(); render();
+});
+$("billList").addEventListener("click", e=>{
+  const b = e.target.closest("[data-bill]"); if (!b) return;
+  myBills = myBills.filter(x=>x.id !== b.dataset.bill); saveBills(); render();
+});
 $("connectForm").addEventListener("submit", e=>{
   e.preventDefault();
   const name = $("cName").value.trim().slice(0,60), key = $("cKey").value.trim();
@@ -595,10 +651,13 @@ function build3d(){
   let ring = null;
   const ringBase = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.06, 8, 120), new THREE.MeshBasicMaterial({color:0x262b3d}));
   ringBase.rotation.x = Math.PI/2; core.add(ringBase);
-  // floor marker on ring (bills floor)
-  const floorAng = (FLOOR/TARGET)*Math.PI*2;
+  // floor marker on ring (bills floor); hidden until bills are known
   const fm = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), new THREE.MeshBasicMaterial({color:0x52cdb8}));
-  fm.position.set(Math.cos(floorAng)*4.6, 0, -Math.sin(floorAng)*4.6); core.add(fm);
+  fm.visible = false; core.add(fm);
+  function setFloor(frac){
+    fm.visible = frac != null;
+    if (fm.visible){ const a = Math.min(1, frac)*Math.PI*2; fm.position.set(Math.cos(a)*4.6, 0, -Math.sin(a)*4.6); }
+  }
   function setRing(p){
     if (ring){ core.remove(ring); ring.geometry.dispose(); }
     if (p <= 0.001) { ring = null; return; }
@@ -693,8 +752,8 @@ function build3d(){
   requestAnimationFrame(frame);
 
   return {
-    update(pct, by){
-      target = pct; setRing(pct);
+    update(pct, by, floorFrac){
+      target = pct; setRing(pct); setFloor(floorFrac);
       planets.forEach(pl=>{
         const p = by[pl.o.id].sum / pl.goal;
         setPlanet(pl, p);
